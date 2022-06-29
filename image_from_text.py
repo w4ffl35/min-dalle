@@ -1,9 +1,10 @@
 import argparse
 import os
+import torch
 from PIL import Image
 
 from min_dalle.generate_image import generate_image_from_text
-
+from settings import SETTINGS
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--mega', action='store_true')
@@ -41,14 +42,28 @@ if __name__ == '__main__':
 
     print(args)
 
-    image = generate_image_from_text(
-        text = args.text,
-        is_mega = args.mega,
-        is_torch = args.torch,
-        seed = args.seed,
-        image_token_count = args.image_token_count
-    )
-    
-    if image != None:
-        save_image(image, args.image_path)
-        print(ascii_from_image(image, size=128))
+    if SETTINGS["USE_CUDA"]:
+        with torch.no_grad():
+            image = generate_image_from_text(
+                text = args.text,
+                is_mega = args.mega,
+                is_torch = args.torch,
+                seed = args.seed,
+                image_token_count = args.image_token_count
+            )
+
+            if image != None:
+                save_image(image, args.image_path)
+                print(ascii_from_image(image, size=128))
+    else:
+        image = generate_image_from_text(
+            text=args.text,
+            is_mega=args.mega,
+            is_torch=args.torch,
+            seed=args.seed,
+            image_token_count=args.image_token_count
+        )
+
+        if image != None:
+            save_image(image, args.image_path)
+            print(ascii_from_image(image, size=128))

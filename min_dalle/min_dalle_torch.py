@@ -13,6 +13,8 @@ from .load_params import (
     convert_dalle_bart_torch_from_flax_params
 )
 
+from settings import SETTINGS
+
 
 def encode_torch(
     text_tokens: LongTensor,
@@ -28,6 +30,10 @@ def encode_torch(
         text_token_count = config['max_text_length'],
         glu_embed_count = config['encoder_ffn_dim']
     )
+
+    if SETTINGS["USE_CUDA"]:
+        encoder = encoder.to('cuda')
+
     encoder_params = convert_dalle_bart_torch_from_flax_params(
         params.pop('encoder'), 
         layer_count=config['encoder_layers'], 
@@ -37,6 +43,9 @@ def encode_torch(
     del encoder_params
 
     print("encoding text tokens")
+    if SETTINGS["USE_CUDA"]:
+        encoder = encoder.to('cuda')
+        text_tokens = text_tokens.to('cuda')
     encoder_state = encoder(text_tokens)
     del encoder
     return encoder_state
@@ -63,6 +72,8 @@ def decode_torch(
         start_token = config['decoder_start_token_id'],
         is_verbose = True
     )
+    if SETTINGS["USE_CUDA"]:
+        decoder = decoder.to('cuda')
     decoder_params = convert_dalle_bart_torch_from_flax_params(
         params.pop('decoder'), 
         layer_count=config['decoder_layers'],
@@ -85,6 +96,8 @@ def generate_image_tokens_torch(
     image_token_count: int
 ) -> LongTensor:
     text_tokens = torch.tensor(text_tokens).to(torch.long)
+    if SETTINGS["USE_CUDA"]:
+        text_tokens = text_tokens.to('cuda')
     # if torch.cuda.is_available(): text_tokens = text_tokens.cuda()
     encoder_state = encode_torch(
         text_tokens, 
@@ -99,7 +112,7 @@ def generate_image_tokens_torch(
         params,
         image_token_count
     )
-    return image_tokens
+    return image_tokens.cpu().detach().numpy()
 
 
 def detokenize_torch(image_tokens: LongTensor) -> numpy.ndarray:

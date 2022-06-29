@@ -1,6 +1,9 @@
 from typing import List
 import torch
 from torch import nn, BoolTensor, FloatTensor, LongTensor
+
+from settings import SETTINGS
+
 torch.no_grad()
 
 
@@ -41,10 +44,17 @@ class AttentionTorch(nn.Module):
         queries: FloatTensor,
         attention_mask: BoolTensor
     ) -> FloatTensor:
+
+        data_a = torch.full(attention_mask.shape, 0.0)
+        data_b = torch.full(attention_mask.shape, -torch.inf)
+        if SETTINGS["USE_CUDA"]:
+            data_a = data_a.to('cuda')
+            data_b = data_b.to('cuda')
+
         attention_bias = torch.where(
             attention_mask,
-            torch.full(attention_mask.shape, 0.0),
-            torch.full(attention_mask.shape, -torch.inf),
+            data_a,
+            data_b,
         )
         attention_weights: FloatTensor = torch.einsum(
             'bqhc,bkhc->bhqk',
@@ -85,6 +95,10 @@ class EncoderLayerTorch(nn.Module):
         self.self_attn = EncoderSelfAttentionTorch(head_count, embed_count)
         self.self_attn_layer_norm = nn.LayerNorm(embed_count)
         self.glu = GLUTorch(embed_count, glu_embed_count)
+
+        if SETTINGS["USE_CUDA"]:
+            self.self_attn = self.self_attn.to('cuda')
+            self.glu = self.glu.to('cuda')
     
     def forward(
         self,
@@ -125,15 +139,28 @@ class DalleBartEncoderTorch(nn.Module):
         self.layernorm_embedding = nn.LayerNorm(embed_count)
         self.final_ln = nn.LayerNorm(embed_count)
 
+        if SETTINGS["USE_CUDA"]:
+            self.embed_tokens = self.embed_tokens.to('cuda')
+            self.embed_positions = self.embed_positions.to('cuda')
+            self.layers = self.layers.to('cuda')
+            self.layernorm_embedding = self.layernorm_embedding.to('cuda')
+
+
     def forward(self, text_tokens: LongTensor) -> FloatTensor:
         attention_mask = text_tokens.not_equal(1)
+        if SETTINGS["USE_CUDA"]:
+            attention_mask = attention_mask.to('cuda')
         batch_count, token_count = text_tokens.shape
         pose_tokens = torch.stack([torch.arange(token_count)] * batch_count)
+        if SETTINGS["USE_CUDA"]:
+            pose_tokens = pose_tokens.to('cuda')
         encoder_state = (
             self.embed_tokens.forward(text_tokens) +
             self.embed_positions.forward(pose_tokens)
         )
         encoder_state = self.layernorm_embedding.forward(encoder_state)
+        if SETTINGS["USE_CUDA"]:
+            encoder_state = encoder_state.to('cuda')
         for layer in self.layers:
             encoder_state = layer.forward(encoder_state, attention_mask)
         encoder_state = self.final_ln.forward(encoder_state)
